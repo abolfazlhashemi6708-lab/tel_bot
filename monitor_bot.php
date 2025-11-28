@@ -1,4 +1,4 @@
-<?php
+<?
 import requests
 from bs4 import BeautifulSoup
 import telebot
@@ -86,3 +86,4 @@ while True:
     check_changes()
     time.sleep(CHECK_INTERVAL)
 ?>
+
