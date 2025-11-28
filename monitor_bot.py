@@ -7,7 +7,7 @@ import hashlib
 # =====================
 # تنظیمات ربات تلگرام
 # =====================
-BOT_TOKEN = "8496222681:AAGP18z_X9vt9SjEUYnHjorm1qe5x6-YdXY"
+BOT_TOKEN = "8496222681:AAHuivncweMgODn_d4ppvBMSLndoyGjUXA0"
 CHAT_ID = "160863054"
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -85,3 +85,4 @@ def check_changes():
 while True:
     check_changes()
     time.sleep(CHECK_INTERVAL)
+
