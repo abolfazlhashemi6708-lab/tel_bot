@@ -1,3 +1,4 @@
+<?php
 import requests
 from bs4 import BeautifulSoup
 import telebot
@@ -78,10 +79,10 @@ def check_changes():
     else:
         print("بدون تغییر.")
 
-
 # =====================
 # حلقه اصلی
 # =====================
 while True:
     check_changes()
     time.sleep(CHECK_INTERVAL)
+?>
