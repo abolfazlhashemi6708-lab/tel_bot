@@ -1,89 +1,97 @@
-<?
-import requests
-from bs4 import BeautifulSoup
-import telebot
-import time
-import hashlib
+<?php
+// ============ تنظیمات ============
+$bot_token = "8496222681:AAFB9nJ0VXNlHeb2YzuoN9FcFozFSA07srQ";
+$api_url = "https://api.telegram.org/bot" . $bot_token . "/";
 
-# =====================
-# تنظیمات ربات تلگرام
-# =====================
-BOT_TOKEN = "8496222681:AAFB9nJ0VXNlHeb2YzuoN9FcFozFSA07srQ"
-CHAT_ID = "160863054"
-bot = telebot.TeleBot(BOT_TOKEN)
+// ایموجی مورد نظر برای الحاق به پیام (هر ایموجی که خواستی بذار)
+$appendEmoji = "🙂";
 
-# =====================
-# لینک صفحه وب که باید بررسی شود
-# =====================
-URL = "https://www.misaghegg.com/cart/"   # اینجا لینک صفحه‌ای که می‌خواهی چک شود را بگذار
-CHECK_INTERVAL = 60           # بررسی هر ۶۰ ثانیه
+// فایل لاگ برای دیباگ
+$logFile = __DIR__ . "/webhook_echo_log.txt";
 
-last_hash = None
-last_text = ""
+// تابع لاگ
+function logMsg($msg) {
+    global $logFile;
+    file_put_contents($logFile, date("Y-m-d H:i:s") . " - " . $msg . PHP_EOL, FILE_APPEND);
+}
 
-def get_page_content():
-    try:
-        response = requests.get(URL)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
+// تابع ارسال پیام با cURL (POST JSON)
+function sendMessage($chat_id, $text) {
+    global $api_url;
 
-        # کل متن صفحه بررسی شود
-        text = soup.get_text(separator="\n")
-        return text.strip()
+    $payload = [
+        'chat_id' => $chat_id,
+        'text'    => $text,
+        'parse_mode' => null // می‌تونی "HTML" یا "Markdown" بذاری در صورت نیاز
+    ];
 
-    except Exception as e:
-        print("خطا:", e)
-        return None
+    $ch = curl_init($api_url . "sendMessage");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    // timeout کوتاه‌تر به‌خاطر محدودیت تلگرام (تلگرام حدود 10 ثانیه صبر می‌کند)
+    curl_setopt($ch, CURLOPT_TIMEOUT, 8);
 
+    $resp = curl_exec($ch);
+    $errNo = curl_errno($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
 
-def check_changes():
-    global last_hash, last_text
+    if ($errNo) {
+        logMsg("cURL error ($errNo): $err");
+        return false;
+    }
 
-    content = get_page_content()
-    if content is None:
-        return
+    logMsg("sendMessage response: " . $resp);
+    return true;
+}
 
-    current_hash = hashlib.md5(content.encode()).hexdigest()
+// ============ خواندن آپدیت از تلگرام ============
+$raw = file_get_contents("php://input");
+if (!$raw) {
+    // همیشه 200 جواب بده تا تلگرام دوباره به طور پی‌در‌پی نپیچد
+    http_response_code(200);
+    exit();
+}
 
-    # در اولین اجرا
-    if last_hash is None:
-        last_hash = current_hash
-        last_text = content
-        print("ربات شروع به مانیتورینگ کرد...")
-        bot.send_message(CHAT_ID, "ربات فعال شد و صفحه را زیر نظر دارد.")
-        return
+logMsg("RAW_UPDATE: " . $raw);
 
-    # تشخیص تغییر
-    if current_hash != last_hash:
-        print("تغییر شناسایی شد!")
-        bot.send_message(CHAT_ID, "⚠️ تغییر جدید در صفحه وب شناسایی شد!")
+$update = json_decode($raw, true);
+if (!$update) {
+    logMsg("JSON decode failed");
+    http_response_code(200);
+    exit();
+}
 
-        # فقط خطوط تغییر کرده را ارسال کن
-        old_lines = last_text.splitlines()
-        new_lines = content.splitlines()
-        changes = []
+// پیام متنی را استخراج می‌کنیم (پشتیبانی ساده برای message و edited_message)
+$message = $update['message'] ?? $update['edited_message'] ?? null;
 
-        for old, new in zip(old_lines, new_lines):
-            if old != new:
-                changes.append(f"- قدیم: {old}\n+ جدید: {new}")
+if (!$message) {
+    logMsg("No message found in update");
+    http_response_code(200);
+    exit();
+}
 
-        if not changes:
-            changes.append("تغییرات جدیدی ایجاد شده ولی خطوط دقیق قابل تشخیص نبود.")
+$chat_id = $message['chat']['id'] ?? null;
+$text = $message['text'] ?? null;
 
-        change_msg = "\n\n".join(changes[:10])  # فقط ۱۰ خط برای جلوگیری از طولانی شدن
-        bot.send_message(CHAT_ID, change_msg)
+if (!$chat_id) {
+    logMsg("No chat_id found");
+    http_response_code(200);
+    exit();
+}
 
-        # بروزرسانی هش
-        last_hash = current_hash
-        last_text = content
-    else:
-        print("بدون تغییر.")
+if ($text !== null && $text !== '') {
+    // اگر پیام متنی است، همان را با ایموجی برگردان
+    // توجه: برای جلوگیری از مشکلات کاراکتری از json_encode در ارسال استفاده کردیم
+    $reply = $text . " " . $appendEmoji;
+    sendMessage($chat_id, $reply);
+} else {
+    // اگر پیام غیرمتنی بود (عکس، ویدئو، استیکر و...) یک پیام توضیحی بفرست
+    $note = "این ربات فقط پیام‌های متنی را بازتاب می‌دهد 📩";
+    sendMessage($chat_id, $note);
+}
 
-# =====================
-# حلقه اصلی
-# =====================
-while True:
-    check_changes()
-    time.sleep(CHECK_INTERVAL)
-?>
-
+// همیشه 200 OK برای تلگرام
+http_response_code(200);
