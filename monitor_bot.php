@@ -95,3 +95,4 @@ if ($text !== null && $text !== '') {
 
 // همیشه 200 OK برای تلگرام
 http_response_code(200);
+
